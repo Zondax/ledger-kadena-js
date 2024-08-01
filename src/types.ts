@@ -1,4 +1,3 @@
-
 export interface ResponseAddress {
   pubkey: Buffer;
   address: string;
