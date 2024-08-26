@@ -28,9 +28,11 @@ import { ResponseSign } from "./types";
 
 export class KadenaApp extends BaseApp {
   static _INS = {
-    GET_VERSION: 0x00 as number,
-    GET_ADDR: 0x01 as number,
-    SIGN: 0x02 as number,
+    GET_VERSION: 0x20 as number,
+    GET_ADDR: 0x21 as number,
+    SIGN: 0x22 as number,
+    SIGN_HASH: 0x23 as number,
+    SIGN_TRANSFER_TX: 0x24 as number,
   };
 
   static _params = {
@@ -81,7 +83,6 @@ export class KadenaApp extends BaseApp {
 
   async sign(path: BIP32Path, blob: Buffer): Promise<ResponseSign> {
     const chunks = this.prepareChunks(path, blob);
-    // TODO: if P2 is needed, use `sendGenericChunk`
     try {
       let signatureResponse = await this.signSendChunk(
         this.INS.SIGN,
@@ -103,6 +104,39 @@ export class KadenaApp extends BaseApp {
       };
     } catch (e) {
       throw processErrorResponse(e);
+    }
+  }
+
+  async signHash(path: BIP32Path, hash: string | Buffer | Uint8Array): Promise<ResponseSign> {
+
+    const rawHash = typeof hash == "string" ?
+    (hash.length == 64 ? Buffer.from(hash, "hex") : Buffer.from(hash, "base64")) : Buffer.from(hash);
+    if (rawHash.length != 32) {
+      throw new TypeError("Hash is not 32 bytes");
+    } else {
+      const chunks = this.prepareChunks(path, rawHash);
+      try {
+        let signatureResponse = await this.signSendChunk(
+          this.INS.SIGN_HASH,
+          1,
+          chunks.length,
+          chunks[0],
+        );
+  
+        for (let i = 1; i < chunks.length; i += 1) {
+          signatureResponse = await this.signSendChunk(
+            this.INS.SIGN_HASH,
+            1 + i,
+            chunks.length,
+            chunks[i],
+          );
+        }
+        return {
+          signature: signatureResponse.readBytes(signatureResponse.length()),
+        };
+      } catch (e) {
+        throw processErrorResponse(e);
+      }
     }
   }
 }
