@@ -24,7 +24,7 @@ import BaseApp, {
 import {
   ResponseAddress,
   ResponseSign,
-  ResponseSignTransfer,
+  BuildTransactionResult,
   TransferTxParams,
   TransferCrossChainTxParams,
   TransferTxType,
@@ -156,7 +156,7 @@ export class KadenaApp extends BaseApp {
   async signTransferTx(
     path: BIP32Path,
     params: TransferTxParams,
-  ): Promise<ResponseSignTransfer> {
+  ): Promise<BuildTransactionResult> {
     var p1 = params as TransferCrossChainTxParams;
     p1.recipient_chainId = 0; // Ignored by Ledger App
     return await this.signTxInternal(path, p1, TransferTxType.TRANSFER);
@@ -165,7 +165,7 @@ export class KadenaApp extends BaseApp {
   async signTransferCreateTx(
     path: BIP32Path,
     params: TransferTxParams,
-  ): Promise<ResponseSignTransfer> {
+  ): Promise<BuildTransactionResult> {
     var p1 = params as TransferCrossChainTxParams;
     p1.recipient_chainId = 0; // Ignored by Ledger App
     return await this.signTxInternal(path, p1, TransferTxType.TRANSFER_CREATE);
@@ -174,7 +174,7 @@ export class KadenaApp extends BaseApp {
   async signTransferCrossChainTx(
     path: BIP32Path,
     params: TransferCrossChainTxParams,
-  ): Promise<ResponseSignTransfer> {
+  ): Promise<BuildTransactionResult> {
     if (params.chainId == params.recipient_chainId)
       throw new TypeError(
         "Recipient chainId is same as sender's in a cross-chain transfer",
@@ -190,7 +190,7 @@ export class KadenaApp extends BaseApp {
     path: BIP32Path,
     params: TransferCrossChainTxParams,
     txType: TransferTxType,
-  ): Promise<ResponseSignTransfer> {
+  ): Promise<BuildTransactionResult> {
     // Use defaults if value not specified
     const t: Date = new Date();
 
@@ -248,11 +248,11 @@ export class KadenaApp extends BaseApp {
         );
       }
 
-      const pubkey = await this.getAddressAndPubKey(path, false);
+      const responseAddress = await this.getAddressAndPubKey(path, false);
       const json = this.buildTransferJson(
         params,
         txType,
-        pubkey.pubkey.toString("hex"),
+        responseAddress.pubkey.toString("hex"),
         creationTime,
       );
 
@@ -268,9 +268,18 @@ export class KadenaApp extends BaseApp {
         .replace(/=/g, "");
 
       return {
-        signature: signatureResponse.readBytes(signatureResponse.length()),
-        cmd: json,
-        hash: hash,
+        pubkey: responseAddress.pubkey.toString("hex"),
+        pact_command: {
+          cmd: json,
+          hash: hash,
+          sigs: [
+            {
+              sig: signatureResponse
+                .readBytes(signatureResponse.length())
+                .toString("hex"),
+            },
+          ],
+        },
       };
     } catch (e) {
       throw processErrorResponse(e);
@@ -335,6 +344,11 @@ export class KadenaApp extends BaseApp {
       : params.recipient;
     const namespace_ = params.namespace === undefined ? "" : params.namespace;
     const module_ = params.module === undefined ? "" : params.module;
+    const amount = convertDecimal(params.amount);
+    const gasPrice = params.gasPrice === undefined ? "1.0e-6" : params.gasPrice;
+    const gasLimit = params.gasLimit === undefined ? "2300" : params.gasLimit;
+    const ttl = params.ttl === undefined ? "600" : params.ttl;
+    const nonce = params.nonce === undefined ? "" : params.nonce;
 
     var cmd = '{"networkId":"' + params.network + '"';
     if (txType == 0) {
@@ -346,7 +360,7 @@ export class KadenaApp extends BaseApp {
       }
       cmd += ' \\"k:' + pubkey + '\\"';
       cmd += ' \\"k:' + recipient + '\\"';
-      cmd += " " + params.amount + ')"}}';
+      cmd += " " + amount + ')"}}';
       cmd += ',"signers":[{"pubKey":"' + pubkey + '"';
       cmd +=
         ',"clist":[{"args":["k:' +
@@ -354,7 +368,7 @@ export class KadenaApp extends BaseApp {
         '","k:' +
         recipient +
         '",' +
-        params.amount +
+        amount +
         "]";
       if (namespace_ == "") {
         cmd += ',"name":"coin.TRANSFER"},{"args":[],"name":"coin.GAS"}]}]';
@@ -378,7 +392,7 @@ export class KadenaApp extends BaseApp {
       cmd += ' \\"k:' + pubkey + '\\"';
       cmd += ' \\"k:' + recipient + '\\"';
       cmd += ' (read-keyset \\"ks\\")';
-      cmd += " " + params.amount + ')"}}';
+      cmd += " " + amount + ')"}}';
       cmd += ',"signers":[{"pubKey":"' + pubkey + '"';
       cmd +=
         ',"clist":[{"args":["k:' +
@@ -386,7 +400,7 @@ export class KadenaApp extends BaseApp {
         '","k:' +
         recipient +
         '",' +
-        params.amount +
+        amount +
         "]";
       if (namespace_ == "") {
         cmd += ',"name":"coin.TRANSFER"},{"args":[],"name":"coin.GAS"}]}]';
@@ -411,7 +425,7 @@ export class KadenaApp extends BaseApp {
       cmd += ' \\"k:' + recipient + '\\"';
       cmd += ' (read-keyset \\"ks\\")';
       cmd += ' \\"' + params.recipient_chainId.toString() + '\\"';
-      cmd += " " + params.amount + ')"}}';
+      cmd += " " + amount + ')"}}';
       cmd += ',"signers":[{"pubKey":"' + pubkey + '"';
       cmd +=
         ',"clist":[{"args":["k:' +
@@ -419,7 +433,7 @@ export class KadenaApp extends BaseApp {
         '","k:' +
         recipient +
         '",' +
-        params.amount +
+        amount +
         ',"' +
         params.recipient_chainId.toString() +
         '"]';
@@ -438,19 +452,19 @@ export class KadenaApp extends BaseApp {
     cmd += ',"meta":{"creationTime":' + creationTime.toString();
     cmd +=
       ',"ttl":' +
-      params.ttl +
+      ttl +
       ',"gasLimit":' +
-      params.gasLimit +
+      gasLimit +
       ',"chainId":"' +
       params.chainId.toString() +
       '"';
     cmd +=
       ',"gasPrice":' +
-      params.gasPrice +
+      gasPrice +
       ',"sender":"k:' +
       pubkey +
       '"},"nonce":"' +
-      params.nonce +
+      nonce +
       '"}';
 
     return cmd;

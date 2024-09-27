@@ -7,9 +7,20 @@ export interface ResponseSign {
   signature: Buffer;
 }
 
-export interface ResponseSignTransfer extends ResponseSign {
+// Using the same structures as in the legacy code
+export interface BuildTransactionResult {
+  pubkey: string;
+  pact_command: PactCommandObject;
+}
+
+export interface PactCommandObject {
   cmd: string;
   hash: string;
+  sigs: PactCommandSig[];
+}
+
+export interface PactCommandSig {
+  sig: string;
 }
 
 export enum TransferTxType {
