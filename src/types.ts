@@ -49,7 +49,7 @@ export interface TransferCrossChainTxParams extends TransferTxParams {
 
 export const maxLengths = {
   recipient: 64,
-  namespace: 16,
+  namespace: 63,
   module: 32,
   recipient_chainId: 2,
   network: 20,
